@@ -36,29 +36,21 @@ private data class PitchRowDef(
 }
 
 /**
- * Generates piano roll pitch rows from top (high pitch, e.g. C6) to bottom (low pitch, e.g. C3).
+ * Generates piano roll pitch rows from top (high pitch C8) to bottom (low pitch C1).
  */
 private fun buildPianoRollPitches(): List<PitchRowDef> {
     val chromaticDesc = listOf("B", "A#", "A", "G#", "G", "F#", "F", "E", "D#", "D", "C#", "C")
     val blackNotes = setOf("A#", "G#", "F#", "D#", "C#")
     val list = mutableListOf<PitchRowDef>()
 
-    // Top note: C6
-    list.add(PitchRowDef("C", 6, isBlackKey = false))
+    // Top note: C8
+    list.add(PitchRowDef("C", 8, isBlackKey = false))
 
-    // Octave 5 (B5 to C5)
-    for (note in chromaticDesc) {
-        list.add(PitchRowDef(note, 5, isBlackKey = blackNotes.contains(note)))
-    }
-
-    // Octave 4 (B4 to C4)
-    for (note in chromaticDesc) {
-        list.add(PitchRowDef(note, 4, isBlackKey = blackNotes.contains(note)))
-    }
-
-    // Octave 3 (B3 to C3)
-    for (note in chromaticDesc) {
-        list.add(PitchRowDef(note, 3, isBlackKey = blackNotes.contains(note)))
+    // Octaves 7 down to 1 (B7..C7 to B1..C1)
+    for (oct in 7 downTo 1) {
+        for (note in chromaticDesc) {
+            list.add(PitchRowDef(note, oct, isBlackKey = blackNotes.contains(note)))
+        }
     }
 
     return list
@@ -66,7 +58,7 @@ private fun buildPianoRollPitches(): List<PitchRowDef> {
 
 /**
  * Renders a DAW-style Piano Roll (matching Image 2) reflecting selected notes in sequence.
- * Features a vertical piano keyboard axis on the left (with C4, C5, C6 markers),
+ * Features a vertical piano keyboard axis on the left (with C1..C8 markers),
  * a dark grid layout with beat/step columns, and horizontal note blocks.
  */
 @Composable
@@ -78,8 +70,17 @@ fun PianoRoll(
     onClear: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val rowHeight = 22.dp
+    val stepWidth = 64.dp
+    val keyboardWidth = 52.dp
+
     val hScrollState = rememberScrollState()
-    val vScrollState = rememberScrollState()
+    // Initial vertical scroll: centered around octave 4 / 5 (middle pitch)
+    val initialVScrollPx = remember {
+        with(density) { (rowHeight * 36).roundToPx() }
+    }
+    val vScrollState = rememberScrollState(initial = initialVScrollPx)
 
     val parsedNotes = remember(notes) {
         notes.map { SequenceNote.fromToken(it) }
@@ -87,9 +88,19 @@ fun PianoRoll(
 
     val pitchRows = remember { buildPianoRollPitches() }
 
-    val rowHeight = 22.dp
-    val stepWidth = 64.dp
-    val keyboardWidth = 52.dp
+    // Auto-scroll vertically to the most recent note in the sequence
+    androidx.compose.runtime.LaunchedEffect(parsedNotes.size) {
+        if (parsedNotes.isNotEmpty()) {
+            val lastNote = parsedNotes.last()
+            val targetIndex = pitchRows.indexOfFirst {
+                it.note == lastNote.normalizedNote && it.octave == lastNote.octave
+            }
+            if (targetIndex >= 0) {
+                val targetPx = with(density) { (rowHeight * (targetIndex - 3).coerceAtLeast(0)).roundToPx() }
+                vScrollState.animateScrollTo(targetPx)
+            }
+        }
+    }
 
     Card(
         modifier = modifier

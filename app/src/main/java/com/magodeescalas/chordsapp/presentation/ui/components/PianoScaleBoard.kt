@@ -50,9 +50,9 @@ private data class BlackKeyDef(
 )
 
 /**
- * Full interactive Piano Scale Keyboard displaying 2+ octaves (C3 to C5, 15 white keys).
+ * Full interactive Piano Scale Keyboard displaying octaves C1 to C8 (50 white keys, 35 black keys).
  * Highlights all notes in the active scale, identifies the root note, and supports
- * tap-to-select note sequences with numbered badges ("1", "2", "3"...).
+ * tap-to-select note sequences.
  */
 @Composable
 fun PianoScaleBoard(
@@ -62,7 +62,17 @@ fun PianoScaleBoard(
     onNoteClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val whiteKeyWidth = 48.dp
+    val whiteKeyHeight = 200.dp
+    val blackKeyWidth = 30.dp
+    val blackKeyHeight = 124.dp
+
+    // Initial scroll position: centered around C3 / C4 (index 14 = C3)
+    val initialScrollPx = remember {
+        with(density) { (whiteKeyWidth * 14).roundToPx() }
+    }
+    val scrollState = rememberScrollState(initial = initialScrollPx)
 
     val normalizedScale = remember(scaleNotes) {
         scaleNotes.map { normalizePianoNote(it) }.toSet()
@@ -75,39 +85,33 @@ fun PianoScaleBoard(
         selectedNotes.map { SequenceNote.fromToken(it) }
     }
 
-    // 15 White keys (2 full octaves + 1 C: C3..B3, C4..B4, C5)
+    // 50 White keys (C1..B1, C2..B2, C3..B3, C4..B4, C5..B5, C6..B6, C7..B7, C8)
     val whiteKeys = remember {
-        listOf(
-            WhiteKeyDef("C", 3), WhiteKeyDef("D", 3), WhiteKeyDef("E", 3),
-            WhiteKeyDef("F", 3), WhiteKeyDef("G", 3), WhiteKeyDef("A", 3), WhiteKeyDef("B", 3),
-            WhiteKeyDef("C", 4), WhiteKeyDef("D", 4), WhiteKeyDef("E", 4),
-            WhiteKeyDef("F", 4), WhiteKeyDef("G", 4), WhiteKeyDef("A", 4), WhiteKeyDef("B", 4),
-            WhiteKeyDef("C", 5)
-        )
+        val list = mutableListOf<WhiteKeyDef>()
+        val whiteNames = listOf("C", "D", "E", "F", "G", "A", "B")
+        for (oct in 1..7) {
+            for (note in whiteNames) {
+                list.add(WhiteKeyDef(note, oct))
+            }
+        }
+        list.add(WhiteKeyDef("C", 8))
+        list
     }
 
-    // 10 Black keys positioned after specific white keys
+    // 35 Black keys positioned after specific white keys across octaves 1 to 7
     val blackKeys = remember {
-        listOf(
-            // Octave 3
-            BlackKeyDef("C#", 3, 0),
-            BlackKeyDef("D#", 3, 1),
-            BlackKeyDef("F#", 3, 3),
-            BlackKeyDef("G#", 3, 4),
-            BlackKeyDef("A#", 3, 5),
-            // Octave 4
-            BlackKeyDef("C#", 4, 7),
-            BlackKeyDef("D#", 4, 8),
-            BlackKeyDef("F#", 4, 10),
-            BlackKeyDef("G#", 4, 11),
-            BlackKeyDef("A#", 4, 12)
-        )
+        val list = mutableListOf<BlackKeyDef>()
+        for (oct in 1..7) {
+            val baseWhiteIdx = (oct - 1) * 7
+            list.add(BlackKeyDef("C#", oct, baseWhiteIdx + 0))
+            list.add(BlackKeyDef("D#", oct, baseWhiteIdx + 1))
+            list.add(BlackKeyDef("F#", oct, baseWhiteIdx + 3))
+            list.add(BlackKeyDef("G#", oct, baseWhiteIdx + 4))
+            list.add(BlackKeyDef("A#", oct, baseWhiteIdx + 5))
+        }
+        list
     }
 
-    val whiteKeyWidth = 48.dp
-    val whiteKeyHeight = 200.dp
-    val blackKeyWidth = 30.dp
-    val blackKeyHeight = 124.dp
     val totalBoardWidth = whiteKeyWidth * whiteKeys.size
 
     Column(
@@ -149,7 +153,6 @@ fun PianoScaleBoard(
                             it.matchesPiano(whiteKey.note, whiteKey.octave)
                         }
                         val isSelected = matchingIndex != -1
-                        val selectionIndex = if (isSelected) matchingIndex + 1 else null
                         val clickToken = SequenceNote.fromPiano(whiteKey.note, whiteKey.octave).toToken()
 
                         Box(
@@ -177,6 +180,8 @@ fun PianoScaleBoard(
                                 .padding(horizontal = 2.dp, vertical = 6.dp),
                             contentAlignment = Alignment.BottomCenter
                         ) {
+                            val displayText = if (whiteKey.note == "C") "C${whiteKey.octave}" else whiteKey.note
+
                             if (isInScale) {
                                 // Scale Note Bubble
                                 Box(
@@ -201,40 +206,20 @@ fun PianoScaleBoard(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = whiteKey.note,
+                                            text = displayText,
                                             color = Color.White,
-                                            fontSize = 12.sp,
+                                            fontSize = if (whiteKey.note == "C") 10.sp else 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
-                                    }
-
-                                    // Numbered selection badge ("1", "2", "3"...)
-                                    if (isSelected && selectionIndex != null) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .offset(x = 4.dp, y = (-4).dp)
-                                                .size(16.dp)
-                                                .background(WebPrimary, CircleShape)
-                                                .border(1.5.dp, Color.White, CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = selectionIndex.toString(),
-                                                color = Color.White,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Black
-                                            )
-                                        }
                                     }
                                 }
                             } else {
                                 // Dimmed key note label for reference
                                 Text(
-                                    text = whiteKey.note,
+                                    text = displayText,
                                     color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = if (whiteKey.note == "C") 10.sp else 11.sp,
+                                    fontWeight = if (whiteKey.note == "C") FontWeight.Bold else FontWeight.Medium,
                                     modifier = Modifier.padding(bottom = 6.dp)
                                 )
                             }
@@ -251,7 +236,6 @@ fun PianoScaleBoard(
                         it.matchesPiano(blackKey.note, blackKey.octave)
                     }
                     val isSelected = matchingIndex != -1
-                    val selectionIndex = if (isSelected) matchingIndex + 1 else null
                     val clickToken = SequenceNote.fromPiano(blackKey.note, blackKey.octave).toToken()
 
                     // Horizontal position: Centered on the seam after the target white key
@@ -314,26 +298,6 @@ fun PianoScaleBoard(
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold
                                     )
-                                }
-
-                                // Selection badge
-                                if (isSelected && selectionIndex != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .offset(x = 4.dp, y = (-4).dp)
-                                            .size(15.dp)
-                                            .background(WebPrimary, CircleShape)
-                                            .border(1.5.dp, Color.White, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = selectionIndex.toString(),
-                                            color = Color.White,
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
-                                    }
                                 }
                             }
                         } else {
